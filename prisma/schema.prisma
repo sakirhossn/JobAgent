@@ -1,0 +1,494 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// USER & CANDIDATE PROFILE
+// -------------------------------------------------------------
+
+model User {
+  id           String             @id @default(uuid())
+  email        String             @unique
+  name         String
+  role         String             @default("ADMIN") // ADMIN, RECRUITER, VIEWER
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  candidate    CandidateProfile?
+}
+
+model CandidateProfile {
+  id                   String                 @id @default(uuid())
+  userId               String                 @unique
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName             String
+  email                String
+  phone                String
+  currentCity          String                 @default("Kolkata")
+  preferredLocations   String                 // JSON array: ["Kolkata", "Remote", "Bengaluru", ...]
+  joiningAvailabilityDays Int                 @default(5)
+  salaryMinExpectation Float                  @default(30000)
+  salaryMaxExpectation Float                  @default(40000)
+  salaryCurrency       String                 @default("INR")
+  targetJobTitles      String                 // JSON array: ["Data Analyst", "IT", "Supply Chain", "Operations", "Business Analyst"]
+  excludedJobTitles    String                 // JSON array: ["Chemical Engineering"]
+  fresherStatus        Boolean                @default(true)
+  summary              String
+  portfolioUrl         String?
+  githubUrl            String?
+  linkedinUrl          String?
+  activeMasterCvId     String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  education            CandidateEducation[]
+  experience           CandidateExperience[]
+  skills               CandidateSkill[]
+  projects             CandidateProject[]
+  certifications       CandidateCertification[]
+  languages            CandidateLanguage[]
+  cvVersions           CvVersion[]
+  generatedCvs         GeneratedCv[]
+  applications         Application[]
+}
+
+model CandidateEducation {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  institution       String
+  degree            String
+  fieldOfStudy      String
+  grade             String?
+  startYear         Int
+  endYear           Int?
+  isCurrent         Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+}
+
+model CandidateExperience {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  company           String
+  title             String
+  location          String?
+  isInternship      Boolean          @default(false)
+  startDate         String
+  endDate           String?
+  isCurrent         Boolean          @default(false)
+  description       String
+  achievements      String?          // JSON array of strings
+  createdAt         DateTime         @default(now())
+}
+
+model CandidateSkill {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name              String
+  category          String           // "Technical", "Operations", "Tools", "Soft"
+  proficiency       String           @default("INTERMEDIATE") // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  verified          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+}
+
+model CandidateProject {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  title             String
+  description       String
+  technologies      String           // JSON array: ["Python", "Pandas", "SQL"]
+  url               String?
+  impact            String?
+  createdAt         DateTime         @default(now())
+}
+
+model CandidateCertification {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  title             String
+  issuer            String
+  issueDate         String
+  expiryDate        String?
+  credentialUrl     String?
+  createdAt         DateTime         @default(now())
+}
+
+model CandidateLanguage {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  language          String
+  proficiency       String           // NATIVE, FLUENT, PROFESSIONAL, BASIC
+  createdAt         DateTime         @default(now())
+}
+
+// -------------------------------------------------------------
+// JOB SOURCES & CANONICAL JOBS
+// -------------------------------------------------------------
+
+model JobSource {
+  id                String           @id @default(uuid())
+  name              String           // e.g. "Mock Feed", "LinkedIn RSS", "Greenhouse Feed"
+  adapterType       String           // "mock", "rss", "greenhouse", "direct_portal"
+  baseUrl           String?
+  isActive          Boolean          @default(true)
+  rateLimitPerMin   Int              @default(30)
+  lastPolledAt      DateTime?
+  statusMessage     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  jobSourceLinks    JobSourceLink[]
+}
+
+model Job {
+  id                   String           @id @default(uuid())
+  contentHash          String           @unique // Deduplication hash
+  title                String
+  company              String
+  location             String
+  remoteType           String           @default("ONSITE") // ONSITE, REMOTE, HYBRID
+  employmentType       String           @default("FULL_TIME") // FULL_TIME, INTERNSHIP, CONTRACT, PART_TIME
+  salaryMin            Float?
+  salaryMax            Float?
+  salaryCurrency       String?          @default("INR")
+  experienceRequired   String?          // e.g. "0-1 years", "Fresher"
+  educationRequired    String?          // e.g. "Bachelor's degree"
+  skills               String?          // JSON array of detected skills
+  preferredSkills      String?          // JSON array of preferred skills
+  originalDescription  String           // PRESERVED UNCHANGED: Never overwritten
+  responsibilities     String?          // JSON array or text
+  qualifications       String?          // JSON array or text
+  applicationUrl       String?
+  applicationEmail     String?
+  postedAt             DateTime?
+  deadline             DateTime?
+  discoveredAt         DateTime         @default(now())
+  rawSourceData        String?          // Raw source payload / JSON
+  isExcluded           Boolean          @default(false)
+  exclusionReason      String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  sourceLinks          JobSourceLink[]
+  requirements         JobRequirement?
+  matches              JobMatch[]
+  applications         Application[]
+}
+
+model JobSourceLink {
+  id                String           @id @default(uuid())
+  jobId             String
+  job               Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourceId          String
+  source            JobSource        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceJobId       String
+  sourceUrl         String?
+  discoveredAt      DateTime         @default(now())
+
+  @@unique([sourceId, sourceJobId])
+}
+
+model JobRequirement {
+  id                   String           @id @default(uuid())
+  jobId                String           @unique
+  job                  Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  roleCategory         String           // "Data Analytics", "IT Support", "Operations", etc.
+  seniority            String           // "Entry-Level", "Mid", "Senior"
+  mandatorySkills      String           // JSON array
+  preferredSkills      String           // JSON array
+  minExperienceYears   Float            @default(0)
+  maxExperienceYears   Float?
+  fresherEligible      Boolean          @default(true)
+  educationDegree      String?
+  locationConstraints  String?          // JSON array
+  joiningTimelineDays  Int?             // e.g. 15, 30
+  applicationRoute     String           // "WEBSITE", "EMAIL", "MANUAL_REVIEW"
+  eligibilityNotes     String?
+  analyzedAt           DateTime         @default(now())
+}
+
+model JobMatch {
+  id                   String           @id @default(uuid())
+  jobId                String
+  job                  Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId          String
+  roleRelevanceScore   Float            // 0 - 100
+  skillsMatchScore     Float            // 0 - 100
+  overallScore         Float            // 0 - 100
+  matchedSkills        String           // JSON array
+  missingSkills        String           // JSON array
+  factorBreakdown      String           // Detailed JSON: { role, skills, edu, exp, location, salary, joining }
+  classification       String           // "AUTO_APPLY_ELIGIBLE", "REVIEW_REQUIRED", "NOT_ELIGIBLE"
+  recommendationReason String
+  createdAt            DateTime         @default(now())
+
+  @@unique([jobId, candidateId])
+}
+
+// -------------------------------------------------------------
+// CVs & TEMPLATES
+// -------------------------------------------------------------
+
+model CvTemplate {
+  id                String           @id @default(uuid())
+  name              String           // e.g. "Modern ATS Clean", "Technical Minimal"
+  structureSchema   String           // JSON configuration
+  isDefault         Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  generatedCvs      GeneratedCv[]
+}
+
+model CvVersion {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  versionNumber     Int
+  title             String           // "Master CV v1"
+  contentSnapshot   String           // JSON snapshot of profile
+  isMaster          Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+
+  generatedCvs      GeneratedCv[]
+}
+
+model GeneratedCv {
+  id                   String           @id @default(uuid())
+  candidateId          String
+  candidate            CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId                String
+  sourceCvVersionId    String?
+  sourceCvVersion      CvVersion?       @relation(fields: [sourceCvVersionId], references: [id])
+  templateId           String?
+  template             CvTemplate?      @relation(fields: [templateId], references: [id])
+  title                String           // e.g. "Data Analyst - Acme Corp - v1"
+  tailoredContent      String           // Full JSON tailored data (order, emphasis, summary, keywords)
+  pdfPath              String?
+  contentHash          String
+  aiPromptVersion      String           @default("v1.0")
+  generatedAt          DateTime         @default(now())
+
+  applications         Application[]
+}
+
+// -------------------------------------------------------------
+// APPLICATIONS & STATE MACHINE
+// -------------------------------------------------------------
+
+model Application {
+  id                   String           @id @default(uuid())
+  candidateId          String
+  candidate            CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId                String
+  job                  Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  cvVersionId          String?
+  cvVersion            GeneratedCv?     @relation(fields: [cvVersionId], references: [id])
+  coverLetterText      String?
+  status               String           @default("DISCOVERED")
+  // DISCOVERED, ANALYZED, MATCHED, REVIEW_REQUIRED, APPROVED, CV_GENERATED,
+  // APPLICATION_STARTED, SUBMITTED, CONFIRMED, FOLLOW_UP, INTERVIEW, OFFER,
+  // REJECTED, FAILED, DUPLICATE, EXPIRED, WITHDRAWN, SKIPPED, HUMAN_ACTION_REQUIRED
+
+  applicationMethod    String           // "WEBSITE", "EMAIL", "MANUAL"
+  applicationUrl       String?
+  emailRecipient       String?
+  emailMessageId       String?
+  submittedAt          DateTime?
+  confirmationId       String?
+  confirmationDetails  String?          // JSON: { receipt, screenshotRef, responseStatus }
+  notes                String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  answers              ApplicationAnswer[]
+  documents            ApplicationDocument[]
+  events               ApplicationEvent[]
+  emails               Email[]
+  humanTasks           AgentTask[]
+  interviews           Interview[]
+  offers               Offer[]
+
+  @@unique([candidateId, jobId]) // Prevent duplicate applications for same canonical job
+}
+
+model ApplicationAnswer {
+  id                String           @id @default(uuid())
+  applicationId     String
+  application       Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question          String
+  answer            String
+  isVerifiedFromProfile Boolean      @default(true)
+  profileFieldSource String?        // e.g. "candidate_profile.currentCity"
+  createdAt         DateTime         @default(now())
+}
+
+model ApplicationDocument {
+  id                String           @id @default(uuid())
+  applicationId     String
+  application       Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  docType           String           // "CV", "COVER_LETTER", "TRANSCRIPT", "CONFIRMATION_SCREENSHOT"
+  filePath          String
+  fileName          String
+  createdAt         DateTime         @default(now())
+}
+
+model ApplicationEvent {
+  id                String           @id @default(uuid())
+  applicationId     String
+  application       Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  eventType         String           // "STATE_TRANSITION", "SUBMITTED", "EMAIL_SENT", "ERROR", "HUMAN_RESOLVED"
+  fromStatus        String?
+  toStatus          String
+  message           String
+  metadata          String?          // JSON metadata
+  createdAt         DateTime         @default(now())
+}
+
+// -------------------------------------------------------------
+// EMAILS & TEMPLATES
+// -------------------------------------------------------------
+
+model EmailTemplate {
+  id                String           @id @default(uuid())
+  name              String           // "Job Application", "Follow-Up", "Interview Response"
+  subjectTemplate   String
+  bodyTemplate      String
+  category          String           // "APPLICATION", "FOLLOW_UP", "REPLY"
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model Email {
+  id                String           @id @default(uuid())
+  applicationId     String?
+  application       Application?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  recipient         String
+  subject           String
+  body              String
+  attachments       String?          // JSON array of paths
+  sentAt            DateTime         @default(now())
+  providerMessageId String?
+  deliveryStatus    String           @default("SENT") // PENDING, SENT, DELIVERED, BOUNCED, FAILED
+  errorMessage      String?
+  createdAt         DateTime         @default(now())
+}
+
+// -------------------------------------------------------------
+// AGENT SYSTEM: RUNS, TASKS, ERRORS
+// -------------------------------------------------------------
+
+model AgentRun {
+  id                String           @id @default(uuid())
+  agentName         String           // "JobDiscoveryAgent", "JobMatchingAgent", "CVTailoringAgent", etc.
+  status            String           @default("RUNNING") // RUNNING, COMPLETED, FAILED
+  itemsProcessed    Int              @default(0)
+  itemsSucceeded    Int              @default(0)
+  itemsFailed       Int              @default(0)
+  startedAt         DateTime         @default(now())
+  completedAt       DateTime?
+  logs              String?          // Detailed execution logs
+  metadata          String?          // JSON
+
+  tasks             AgentTask[]
+  errors            AgentError[]
+}
+
+model AgentTask {
+  id                String           @id @default(uuid())
+  agentRunId        String?
+  agentRun          AgentRun?        @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  applicationId     String?
+  application       Application?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  taskType          String           // "HUMAN_ACTION_REQUIRED", "CV_GENERATION", "SUBMISSION", "FOLLOW_UP"
+  priority          String           @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  title             String
+  reason            String
+  requiredAction    String
+  status            String           @default("PENDING") // PENDING, RESOLVED, SKIPPED, REJECTED
+  actionPayload     String?          // JSON with context (e.g. unknown question)
+  resolutionNotes   String?
+  resolvedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model AgentError {
+  id                String           @id @default(uuid())
+  agentRunId        String?
+  agentRun          AgentRun?        @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  agentName         String
+  jobId             String?
+  applicationId     String?
+  errorType         String           // "TRANSIENT", "PERMANENT", "HUMAN_ACTION_REQUIRED"
+  message           String
+  stackTrace        String?
+  retryCount        Int              @default(0)
+  resolved          Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+}
+
+// -------------------------------------------------------------
+// INTERVIEWS, OFFERS & AUTOMATION RULES
+// -------------------------------------------------------------
+
+model Interview {
+  id                String           @id @default(uuid())
+  applicationId     String
+  application       Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  company           String
+  roleTitle         String
+  scheduledAt       DateTime
+  interviewRound    String           // "Technical Screen", "HR Round", "Final Managerial"
+  meetingLink       String?
+  notes             String?
+  status            String           @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, RESCHEDULED
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model Offer {
+  id                String           @id @default(uuid())
+  applicationId     String
+  application       Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  company           String
+  roleTitle         String
+  offeredSalary     Float
+  currency          String           @default("INR")
+  offerDate         DateTime         @default(now())
+  joiningDate       DateTime?
+  status            String           @default("RECEIVED") // RECEIVED, ACCEPTED, DECLINED, NEGOTIATING
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model AutomationRule {
+  id                String           @id @default(uuid())
+  name              String
+  ruleType          String           // "EXCLUSION", "AUTO_APPROVE", "MATCHING_THRESHOLD", "FOLLOW_UP"
+  conditionJson     String           // JSON matching logic
+  action            String           // "EXCLUDE", "APPROVE", "FLAG_REVIEW", "SCHEDULE_TASK"
+  isActive          Boolean          @default(true)
+  priority          Int              @default(1)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model Setting {
+  id                String           @id @default(uuid())
+  key               String           @unique
+  value             String
+  category          String           @default("GENERAL") // GENERAL, AI, EMAIL, LIMITS, SCHEDULER
+  description       String?
+  updatedAt         DateTime         @updatedAt
+}
